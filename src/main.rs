@@ -40,32 +40,43 @@ fn parse_args(args: &Vec<String>) -> Config {
     for (index, arg) in args.iter().enumerate() {
         match arg.as_str() {
             "-lcg" => {
-                let mut modulus = args[index + 1].split("^");
-                let base = modulus
-                    .next()
-                    .expect("Unable to find base of modulus")
-                    .parse::<i32>()
-                    .expect("Unable to parse base of modulus");
-                let power = modulus
-                    .next()
-                    .expect("Unable to find power of modulus")
-                    .parse::<u32>()
-                    .expect("Unable to parse power of modulus");
+                let modulus = args[index + 1].split("^").collect::<Vec<&str>>();
+
+                let mut base = 0;
+                let mut power = 0;
+
+                if modulus.len() == 2 {
+                    base = modulus[0]
+                        .parse::<i32>()
+                        .expect("Unable to parse base of modulus");
+                    power = modulus[1]
+                        .parse::<u32>()
+                        .expect("Unable to parse power of modulus");
+                } else {
+                    base = modulus[0]
+                        .parse::<i32>()
+                        .expect("Unable to parse base of modulus");
+                    power = 1;
+                }
 
                 // TODO: remove -1 if its necessary
                 let modulus = base.pow(power) - 1;
 
-                let mut multiplier = args[index + 2].split("^");
-                let base = multiplier
-                    .next()
-                    .expect("Unable to find base of multiplier")
-                    .parse::<i32>()
-                    .expect("Unable to parse base of multiplier");
-                let power = multiplier
-                    .next()
-                    .expect("Unable to find power of multiplier")
-                    .parse::<u32>()
-                    .expect("Unable to parse power of multiplier");
+                let multiplier = args[index + 2].split("^").collect::<Vec<&str>>();
+
+                if multiplier.len() == 2 {
+                    base = multiplier[0]
+                        .parse::<i32>()
+                        .expect("Unable to parse base of multiplier");
+                    power = multiplier[1]
+                        .parse::<u32>()
+                        .expect("Unable to parse power of multiplier");
+                } else {
+                    base = multiplier[0]
+                        .parse::<i32>()
+                        .expect("Unable to parse base of multiplier");
+                    power = 1;
+                }
 
                 let multiplier = base.pow(power);
 
@@ -98,7 +109,8 @@ fn parse_args(args: &Vec<String>) -> Config {
     config
 }
 
-// cargo run -- -lcg 2^11 3^5 1 4 -u -n 100000 >> file.txt
+// cargo run -- -lcg 2^11 3^5 1 4 -u -n 100000 > nums.txt -> 88 unique of 2047
+// cargo run -- -lcg 65538 75 74 0 -u -n 100000 > nums.txt -> 65000+ unique
 fn main() {
     let args = args().into_iter().collect::<Vec<String>>();
 

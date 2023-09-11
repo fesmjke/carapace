@@ -3,10 +3,9 @@ mod utils;
 
 #[cfg(test)]
 mod core {
-    use super::*;
-
     mod lcg {
         use crate::lcg::LCG;
+        use crate::utils::unique;
 
         #[test]
         fn lcg_lecture() {
@@ -25,6 +24,7 @@ mod core {
             }
 
             assert_eq!(vec![7, 17, 23, 1, 7], nums);
+            assert_eq!(unique(&nums), 4);
         }
         #[test]
         fn lcg_own() {
@@ -43,8 +43,10 @@ mod core {
             }
 
             println!("{:?}", nums);
+            println!("{}", unique(&nums));
 
             assert_eq!(nums.len(), 1000);
+            assert!(unique(&nums) >= 50);
         }
     }
 }

@@ -2,12 +2,17 @@ pub struct LCG {
     modulus: i32,
     multiplier: i32,
     increment: i32,
-    seed: i32
+    seed: i32,
 }
 
 impl LCG {
     pub fn new(modulus: i32, multiplier: i32, increment: i32, seed: i32) -> Self {
-        Self { modulus, multiplier, increment, seed }
+        Self {
+            modulus,
+            multiplier,
+            increment,
+            seed,
+        }
     }
 }
 

@@ -1,12 +1,12 @@
 pub struct LCG {
-    modulus: i32,
-    multiplier: i32,
-    increment: i32,
-    seed: i32,
+    modulus: u64,
+    multiplier: u64,
+    increment: u64,
+    seed: u64,
 }
 
 impl LCG {
-    pub fn new(modulus: i32, multiplier: i32, increment: i32, seed: i32) -> Self {
+    pub fn new(modulus: u64, multiplier: u64, increment: u64, seed: u64) -> Self {
         Self {
             modulus,
             multiplier,
@@ -17,7 +17,7 @@ impl LCG {
 }
 
 impl Iterator for LCG {
-    type Item = i32;
+    type Item = u64;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.seed = (self.multiplier * self.seed + self.increment) % self.modulus;

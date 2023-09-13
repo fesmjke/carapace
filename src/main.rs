@@ -6,7 +6,7 @@ mod lcg;
 mod utils;
 
 enum Module {
-    LCG(i32, i32, i32, i32),
+    LCG(u64, u64, u64, u64),
 }
 
 struct Config {
@@ -47,14 +47,14 @@ fn parse_args(args: &Vec<String>) -> Config {
 
                 if modulus.len() == 2 {
                     base = modulus[0]
-                        .parse::<i32>()
+                        .parse::<u64>()
                         .expect("Unable to parse base of modulus");
                     power = modulus[1]
                         .parse::<u32>()
                         .expect("Unable to parse power of modulus");
                 } else {
                     base = modulus[0]
-                        .parse::<i32>()
+                        .parse::<u64>()
                         .expect("Unable to parse base of modulus");
                     power = 1;
                 }
@@ -66,14 +66,14 @@ fn parse_args(args: &Vec<String>) -> Config {
 
                 if multiplier.len() == 2 {
                     base = multiplier[0]
-                        .parse::<i32>()
+                        .parse::<u64>()
                         .expect("Unable to parse base of multiplier");
                     power = multiplier[1]
                         .parse::<u32>()
                         .expect("Unable to parse power of multiplier");
                 } else {
                     base = multiplier[0]
-                        .parse::<i32>()
+                        .parse::<u64>()
                         .expect("Unable to parse base of multiplier");
                     power = 1;
                 }
@@ -81,10 +81,10 @@ fn parse_args(args: &Vec<String>) -> Config {
                 let multiplier = base.pow(power);
 
                 let increment = args[index + 3]
-                    .parse::<i32>()
+                    .parse::<u64>()
                     .expect("Unable to parse increment parameter");
                 let seed = args[index + 4]
-                    .parse::<i32>()
+                    .parse::<u64>()
                     .expect("Unable to parse seed parameter");
 
                 config.set_module(Module::LCG(modulus, multiplier, increment, seed));
@@ -119,7 +119,11 @@ fn main() {
     match config.module {
         Module::LCG(modular, multiplier, increment, seed) => {
             let mut lcg = LCG::new(modular, multiplier, increment, seed);
-            let mut nums = Vec::<i32>::with_capacity(config.num);
+
+            let mut nums = Vec::<u64>::with_capacity(config.num);
+
+            // TODO: add threads for big input num
+
             for _ in 0..config.num {
                 let number = lcg.next().expect("Failed generate next number");
                 nums.push(number);

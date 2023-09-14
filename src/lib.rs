@@ -50,4 +50,54 @@ mod core {
             assert!(unique(&nums) >= 50);
         }
     }
+    mod md5 {
+        use crate::md5::MD5;
+
+        #[test]
+        fn empty_string() {
+            assert_eq!(MD5::from(""), "D41D8CD98F00B204E9800998ECF8427E");
+        }
+
+        #[test]
+        fn single_letter() {
+            assert_eq!(MD5::from("a"), "0CC175B9C0F1B6A831C399E269772661");
+        }
+
+        #[test]
+        fn abc_letters() {
+            assert_eq!(MD5::from("abc"), "900150983CD24FB0D6963F7D28E17F72");
+        }
+
+        #[test]
+        fn long_message() {
+            assert_eq!(
+                MD5::from("message digest"),
+                "F96B697D7CB7938D525A2F31AAF161D0"
+            );
+        }
+
+        #[test]
+        fn alphabet_message() {
+            assert_eq!(
+                MD5::from("abcdefghijklmnopqrstuvwxyz"),
+                "C3FCD3D76192E4007DFB496CCA67E13B"
+            );
+        }
+
+        #[test]
+        fn letters_numbers_message() {
+            assert_eq!(
+                MD5::from("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"),
+                "D174AB98D277D9F5A5611C2C9F419D9F"
+            );
+        }
+
+        #[test]
+        fn repeated_numbers() {
+            assert_eq!(
+                MD5::from("12345678901234567890123456789012345678901234567890123456789012345678901234567890"),
+                "57EDF4A22BE3C955AC49DA2E2107B67A"
+            );
+        }
+    }
 }

@@ -1,4 +1,5 @@
 mod lcg;
+mod md5;
 mod utils;
 
 #[cfg(test)]

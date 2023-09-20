@@ -3,10 +3,12 @@ use crate::utils::unique;
 use std::env::args;
 
 mod lcg;
+mod md5;
 mod utils;
 
 enum Module {
     LCG(u64, u64, u64, u64),
+    MD5(String),
 }
 
 struct Config {
@@ -100,6 +102,17 @@ fn parse_args(args: &Vec<String>) -> Config {
                 config.set_unique(true);
             }
             "-m" => {}
+            "-md5" => {
+                config.set_unique(false);
+
+                let input = args[index + 1]
+                    .parse::<String>()
+                    .expect("Unable parse number of generated elements");
+
+                config.set_num(0);
+
+                config.set_module(Module::MD5(input));
+            }
             _ => {
                 // println!("Unexpected flag: '{}'", arg.as_str())
             }
@@ -135,6 +148,11 @@ fn main() {
             if config.unique {
                 println!("Number of unique elements - {}", unique(&nums));
             }
+        }
+        Module::MD5(input) => {
+            let hash = md5::MD5::from(input.as_str());
+
+            println!("{}", hash);
         }
     }
 }

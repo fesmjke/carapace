@@ -59,6 +59,14 @@ mod core {
         }
 
         #[test]
+        fn site_example() {
+            assert_eq!(
+                MD5::from("They are deterministic"),
+                "23DB6982CAEF9E9152F1A5B2589E6CA3"
+            );
+        }
+
+        #[test]
         fn single_letter() {
             assert_eq!(MD5::from("a"), "0CC175B9C0F1B6A831C399E269772661");
         }

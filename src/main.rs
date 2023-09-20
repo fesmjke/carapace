@@ -1,6 +1,9 @@
 use crate::lcg::LCG;
+use crate::md5::MD5;
 use crate::utils::unique;
 use std::env::args;
+use std::fs::File;
+use std::io::{BufReader, Read};
 
 mod lcg;
 mod md5;
@@ -104,14 +107,82 @@ fn parse_args(args: &Vec<String>) -> Config {
             "-m" => {}
             "-md5" => {
                 config.set_unique(false);
+                config.set_num(0);
 
                 let input = args[index + 1]
                     .parse::<String>()
-                    .expect("Unable parse number of generated elements");
+                    .expect("Unable to read string input to hash");
 
-                config.set_num(0);
+                config.set_module(Module::MD5(String::from("")));
+            }
+            "-r" => {
+                let input = args[index + 1]
+                    .parse::<String>()
+                    .expect("Unable to read string input to hash");
 
                 config.set_module(Module::MD5(input));
+            }
+            "-f" => {
+                let file = args[index + 1]
+                    .parse::<String>()
+                    .expect("Unable to read file path");
+
+                let file = File::open(file).expect("Unable to read input file");
+                let mut buf_reader = BufReader::new(file);
+
+                let mut contents = String::new();
+                buf_reader
+                    .read_to_string(&mut contents)
+                    .expect("Unable to read file content");
+
+                config.set_module(Module::MD5(contents));
+            }
+            "-c" => {
+                // -md5 -c "raw-file.txt" "hashed-file.txt"
+
+                // Reading raw-file to make from it a hash
+                let raw_file = args[index + 1]
+                    .parse::<String>()
+                    .expect("Unable to read file path");
+
+                let file = File::open(raw_file).expect("Unable to read raw file");
+                let mut buf_reader = BufReader::new(file);
+
+                let mut raw_contents = String::new();
+                buf_reader
+                    .read_to_string(&mut raw_contents)
+                    .expect("Unable to read raw file content");
+
+                let raw_file_hash = MD5::from(raw_contents.as_str());
+
+                // Reading raw-file to make from it a hash
+                let hashed_file = args[index + 2]
+                    .parse::<String>()
+                    .expect("Unable to read file path");
+
+                let file = File::open(hashed_file).expect("Unable to read file that contains hash");
+                let mut buf_reader = BufReader::new(file);
+
+                let mut hashed_contents = String::new();
+                buf_reader
+                    .read_to_string(&mut hashed_contents)
+                    .expect("Unable to read file with hash");
+
+                if raw_file_hash == hashed_contents {
+                    println!(
+                        "\x1b[32mFile {} content is equal to hash that contains in file {}\x1b[0m",
+                        args[index + 1],
+                        args[index + 2]
+                    );
+                } else {
+                    println!(
+                        "\x1b[31mFile {} content is not equal to hash that contains in file {}\x1b[0m",
+                        args[index + 1],
+                        args[index + 2]
+                    );
+                }
+
+                config.set_module(Module::MD5(raw_contents));
             }
             _ => {
                 // println!("Unexpected flag: '{}'", arg.as_str())
@@ -122,8 +193,12 @@ fn parse_args(args: &Vec<String>) -> Config {
     config
 }
 
-// cargo run -- -lcg 2^11 3^5 1 4 -u -n 100000 > nums.txt -> 88 unique of 2047
-// cargo run -- -lcg 65538 75 74 0 -u -n 100000 > nums.txt -> 65000+ unique
+// lcg - cargo run -- -lcg 2^11 3^5 1 4 -u -n 100000 > nums.txt -> 88 unique of 2047
+// lcg - cargo run -- -lcg 65538 75 74 0 -u -n 100000 > nums.txt -> 65000+ unique
+// md5 - cargo run -- -md5 "" -> input raw
+// md5 - cargo run -- -md5 file.txt >> hash.txt -> input file
+// md5 - cargo run -- -md5 file.txt hash.txt -> compare raw and hash
+
 fn main() {
     let args = args().into_iter().collect::<Vec<String>>();
 
@@ -152,7 +227,7 @@ fn main() {
         Module::MD5(input) => {
             let hash = md5::MD5::from(input.as_str());
 
-            println!("{}", hash);
+            print!("{}", hash);
         }
     }
 }

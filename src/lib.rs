@@ -1,5 +1,6 @@
 mod lcg;
 mod md5;
+mod rc5;
 mod utils;
 
 #[cfg(test)]
@@ -106,6 +107,14 @@ mod core {
                 MD5::from("12345678901234567890123456789012345678901234567890123456789012345678901234567890"),
                 "57EDF4A22BE3C955AC49DA2E2107B67A"
             );
+        }
+    }
+    mod rc5 {
+        use crate::rc5::RC5;
+
+        #[test]
+        fn initial() {
+            todo!()
         }
     }
 }

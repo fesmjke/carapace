@@ -110,11 +110,19 @@ mod core {
         }
     }
     mod rc5 {
-        use crate::rc5::RC5;
+        use crate::rc5::{WordSize, RC5};
 
+        // RC5-32/12/16
         #[test]
-        fn initial() {
-            todo!()
+        fn zeros() {
+            let rc = RC5::new(WordSize::ThirtyTwo, 12, 16);
+
+            let ciphertext = rc.encrypt(
+                "00000000 00000000",
+                "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00",
+            );
+
+            assert_eq!(ciphertext, "EEDBA521 6D8F4B15");
         }
     }
 }

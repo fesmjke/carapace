@@ -1,5 +1,6 @@
+use crate::lcg::LCG;
 use crate::md5::MD5;
-use num::traits::{WrappingAdd, WrappingSub};
+use num::traits::{AsPrimitive, WrappingAdd, WrappingSub};
 use num::{NumCast, PrimInt};
 use std::cmp::max;
 use std::fmt::Debug;
@@ -27,7 +28,11 @@ pub trait Word: // u16 u32 u64
     const Q: Self; // Odd((φ − 1)2^w)
 
     fn from_le_bytes(bytes: &[u8]) -> Self;
+
+    fn from_be_bytes(bytes: &[u8]) -> Self;
     fn to_le_bytes(&self) -> Vec<u8>;
+
+    fn to_be_bytes(&self) -> Vec<u8>;
 }
 
 macro_rules! impl_word {
@@ -41,6 +46,10 @@ macro_rules! impl_word {
                 $typ::to_le_bytes(*self).to_vec()
             }
 
+            fn to_be_bytes(&self) -> Vec<u8> {
+                $typ::to_be_bytes(*self).to_vec()
+            }
+
             fn from_le_bytes(bytes: &[u8]) -> Self {
                 $typ::from_le_bytes(
                     bytes
@@ -48,27 +57,43 @@ macro_rules! impl_word {
                         .expect("Unable to convert bytes to le bytes"),
                 )
             }
+
+            fn from_be_bytes(bytes: &[u8]) -> Self {
+                $typ::from_be_bytes(bytes.try_into().expect("Unable to convert to be bytes"))
+            }
         }
     };
 }
 
 impl_word!(u32, 0x9E3779B9, 0xB7E15163);
+impl_word!(u64, 0xB7E151628AED2A6B, 0x9E3779B97F4A7C15);
+
+fn convert<W, U>(y: U) -> W
+where
+    W: Word + 'static,
+    U: AsPrimitive<W>,
+{
+    y.as_()
+}
 
 pub struct RC5<W: Word> {
     word_size: W,
     rounds: usize,
     octets: usize,
+    extended_part: usize,
 }
 
 impl<W> RC5<W>
 where
-    W: Word,
+    W: Word + 'static,
+    u64: AsPrimitive<W>,
 {
     pub fn new(rounds: usize, octets: usize) -> Self {
         Self {
             word_size: W::ZERO,
             rounds,
             octets,
+            extended_part: usize::default(),
         }
     }
 
@@ -88,11 +113,6 @@ where
     }
 
     fn key_expand(&self, key: &[u8]) -> Vec<W> {
-        println!(
-            "Key - {:?}\nRaw - {key:?}",
-            String::from_utf8_lossy(key).to_string().as_str()
-        );
-
         // parse md5
         let hashed_key = MD5::from(String::from_utf8_lossy(key).to_string().as_str());
 
@@ -107,6 +127,8 @@ where
             .sum();
 
         let bytes = summarize.to_be_bytes().into_iter().collect::<Vec<_>>();
+
+        // TODO replace key with md5 hash!
 
         let mut words = self.key_to_words(key); // &bytes[..]
 
@@ -232,5 +254,79 @@ where
         }
 
         plain
+    }
+
+    pub fn encrypt_cbc(&mut self, plain: &[u8], key: &[u8]) -> Vec<u8> {
+        let mut plain_clone = plain.clone().to_vec();
+        let plaintext_len = plain.len();
+        let word_bytes = size_of::<W>();
+        let block_size = 2 * word_bytes;
+
+        let steps = (plaintext_len + (block_size - 1)) / block_size;
+
+        self.extended_part = steps * block_size - plaintext_len;
+
+        plain_clone.extend(vec![0u8; steps * block_size - plaintext_len]);
+
+        let mut ciphertext = Vec::<u8>::with_capacity(plain_clone.len());
+
+        // todo: add lcg generator as initialization vector
+
+        let mut ct = [W::ZERO; 2];
+
+        for (round, block) in plain_clone.chunks(block_size).enumerate() {
+            let block = [
+                W::from_le_bytes(&block[0..word_bytes]),
+                W::from_le_bytes(&block[word_bytes..block_size]),
+            ];
+
+            let pt = match round {
+                0 => block,
+                _ => [block[0] ^ ct[0], block[1] ^ ct[1]],
+            };
+
+            ct = self.encrypt_block(pt, &key);
+
+            ciphertext.extend(ct[0].to_le_bytes());
+            ciphertext.extend(ct[1].to_le_bytes());
+        }
+
+        ciphertext
+    }
+
+    pub fn decrypt_cbc(&mut self, ciphertext: &[u8], key: &[u8]) -> Vec<u8> {
+        let word_bytes = size_of::<W>();
+        let block_size = 2 * word_bytes;
+
+        let mut plaintext = Vec::<u8>::new();
+
+        // todo: add lcg generator as initialization vector
+
+        let mut ct_prev = [W::ZERO; 2];
+
+        for (round, block) in ciphertext.chunks(block_size).enumerate() {
+            let block = [
+                W::from_le_bytes(&block[0..word_bytes]),
+                W::from_le_bytes(&block[word_bytes..block_size]),
+            ];
+
+            let ct = [block[0], block[1]];
+
+            let pt = self.decrypt_block(ct, &key);
+
+            let pt = match round {
+                0 => pt,
+                _ => [pt[0] ^ ct_prev[0], pt[1] ^ ct_prev[1]],
+            };
+
+            ct_prev = ct;
+
+            plaintext.extend(pt[0].to_le_bytes());
+            plaintext.extend(pt[1].to_le_bytes());
+        }
+
+        plaintext.drain(plaintext.len() - self.extended_part..plaintext.len());
+
+        plaintext
     }
 }

@@ -35,6 +35,12 @@ pub trait Word: // u16 u32 u64
     fn to_be_bytes(&self) -> Vec<u8>;
 }
 
+pub enum Flags {
+    ECB,
+    CBC,
+    CBC_MD5,
+}
+
 macro_rules! impl_word {
     ($typ:tt, $q:expr, $p:expr) => {
         impl Word for $typ {
@@ -81,6 +87,7 @@ pub struct RC5<W: Word> {
     rounds: usize,
     octets: usize,
     extended_part: usize,
+    flag: Flags,
 }
 
 impl<W> RC5<W>
@@ -88,12 +95,13 @@ where
     W: Word + 'static,
     u64: AsPrimitive<W>,
 {
-    pub fn new(rounds: usize, octets: usize) -> Self {
+    pub fn new(rounds: usize, octets: usize, flag: Flags) -> Self {
         Self {
             word_size: W::ZERO,
             rounds,
             octets,
             extended_part: usize::default(),
+            flag,
         }
     }
 
@@ -113,24 +121,76 @@ where
     }
 
     fn key_expand(&self, key: &[u8]) -> Vec<W> {
-        // parse md5
-        let hashed_key = MD5::from(String::from_utf8_lossy(key).to_string().as_str());
+        let mut words = match self.flag {
+            Flags::ECB => self.key_to_words(&key),
+            Flags::CBC => self.key_to_words(&key),
+            Flags::CBC_MD5 => {
+                let hashed_key = MD5::from(String::from_utf8_lossy(key).to_string().as_str());
 
-        let summarize: u128 = hashed_key
-            .chars()
-            .collect::<Vec<_>>()
-            .chunks(8)
-            .map(|x| x.iter().collect::<String>())
-            .collect::<Vec<_>>()
-            .iter()
-            .map(|x| u128::from_str_radix(x, 16).expect("Unable to parse as u128"))
-            .sum();
+                let mut bytes = Vec::<u8>::new();
 
-        let bytes = summarize.to_be_bytes().into_iter().collect::<Vec<_>>();
+                match self.octets {
+                    8 => {
+                        let temp = hashed_key
+                            .chars()
+                            .collect::<Vec<_>>()
+                            .chunks(8)
+                            .map(|x| x.iter().collect::<String>())
+                            .collect::<Vec<_>>();
 
-        // TODO replace key with md5 hash!
+                        let low_bytes: u128 = temp[2..]
+                            .iter()
+                            .map(|x| u128::from_str_radix(x, 16).expect("Unable to parse as u128"))
+                            .sum();
 
-        let mut words = self.key_to_words(key); // &bytes[..]
+                        bytes.extend(low_bytes.to_be_bytes());
+                    }
+                    16 => {
+                        let temp: u128 = hashed_key
+                            .chars()
+                            .collect::<Vec<_>>()
+                            .chunks(8)
+                            .map(|x| x.iter().collect::<String>())
+                            .collect::<Vec<_>>()
+                            .iter()
+                            .map(|x| u128::from_str_radix(x, 16).expect("Unable to parse as u128"))
+                            .sum();
+
+                        bytes.extend(temp.to_be_bytes());
+                    }
+                    32 => {
+                        let high_bytes: u128 = hashed_key
+                            .chars()
+                            .collect::<Vec<_>>()
+                            .chunks(8)
+                            .map(|x| x.iter().collect::<String>())
+                            .collect::<Vec<_>>()
+                            .iter()
+                            .map(|x| u128::from_str_radix(x, 16).expect("Unable to parse as u128"))
+                            .sum();
+
+                        bytes.extend(high_bytes.to_be_bytes());
+
+                        let low_bytes: u128 = MD5::from(hashed_key.as_str())
+                            .chars()
+                            .collect::<Vec<_>>()
+                            .chunks(8)
+                            .map(|x| x.iter().collect::<String>())
+                            .collect::<Vec<_>>()
+                            .iter()
+                            .map(|x| u128::from_str_radix(x, 16).expect("Unable to parse as u128"))
+                            .sum();
+
+                        bytes.extend(low_bytes.to_be_bytes());
+                    }
+                    _ => {
+                        panic!("unknown word size!")
+                    }
+                };
+
+                self.key_to_words(&bytes[..])
+            }
+        };
 
         let subkeys_count = 2 * (self.rounds + 1);
         let mut subkeys = vec![W::ZERO; subkeys_count];
@@ -270,7 +330,12 @@ where
 
         let mut ciphertext = Vec::<u8>::with_capacity(plain_clone.len());
 
-        // todo: add lcg generator as initialization vector
+        let mut lcg = LCG::new(65538, 75, 74, 0);
+
+        let iv = [
+            convert(lcg.next().expect("Unable to generate random number!")),
+            convert(lcg.next().expect("Unable to generate random number!")),
+        ];
 
         let mut ct = [W::ZERO; 2];
 
@@ -281,7 +346,7 @@ where
             ];
 
             let pt = match round {
-                0 => block,
+                0 => [block[0] ^ iv[0], block[1] ^ iv[1]],
                 _ => [block[0] ^ ct[0], block[1] ^ ct[1]],
             };
 
@@ -300,7 +365,12 @@ where
 
         let mut plaintext = Vec::<u8>::new();
 
-        // todo: add lcg generator as initialization vector
+        let mut lcg = LCG::new(65538, 75, 74, 0);
+
+        let iv = [
+            convert(lcg.next().expect("Unable to generate random number!")),
+            convert(lcg.next().expect("Unable to generate random number!")),
+        ];
 
         let mut ct_prev = [W::ZERO; 2];
 
@@ -315,7 +385,7 @@ where
             let pt = self.decrypt_block(ct, &key);
 
             let pt = match round {
-                0 => pt,
+                0 => [pt[0] ^ iv[0], pt[1] ^ iv[1]],
                 _ => [pt[0] ^ ct_prev[0], pt[1] ^ ct_prev[1]],
             };
 

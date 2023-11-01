@@ -1,17 +1,21 @@
 use crate::lcg::LCG;
 use crate::md5::MD5;
 use crate::utils::unique;
+use crate::Module::RC5;
 use std::env::args;
 use std::fs::File;
 use std::io::{BufReader, Read};
+use std::path::Path;
 
 mod lcg;
 mod md5;
+mod rc5;
 mod utils;
 
 enum Module {
     LCG(u64, u64, u64, u64),
     MD5(String),
+    RC5(String, String, String, String),
 }
 
 struct Config {
@@ -43,6 +47,7 @@ fn parse_args(args: &Vec<String>) -> Config {
     let mut config = Config::new();
 
     for (index, arg) in args.iter().enumerate() {
+        // TODO: Refactor parsing
         match arg.as_str() {
             "-lcg" => {
                 let modulus = args[index + 1].split("^").collect::<Vec<&str>>();
@@ -184,8 +189,53 @@ fn parse_args(args: &Vec<String>) -> Config {
 
                 config.set_module(Module::MD5(raw_contents));
             }
+            "-rc5" => {
+                let mode = args[index + 1]
+                    .parse::<String>()
+                    .expect("Unable to read rc5 mode");
+                let cipher = args[index + 2]
+                    .parse::<String>()
+                    .expect("Unable to read rc5 cipher mode");
+
+                let file_path = match args[index + 3].parse::<String>() {
+                    Ok(file) => file,
+                    Err(_) => String::from(""),
+                };
+
+                // file
+
+                let mut contents = String::new();
+
+                let path = Path::new(file_path.as_str());
+
+                if path.exists() {
+                    let file = File::open(file_path).expect("Unable to read input file");
+
+                    let mut buf_reader = BufReader::new(file);
+
+                    buf_reader
+                        .read_to_string(&mut contents)
+                        .expect("Unable to read file content");
+                }
+
+                let mut input = String::new();
+
+                if contents != "" {
+                    input = contents;
+                } else {
+                    input = args[index + 3]
+                        .parse::<String>()
+                        .expect("Unable to read raw input!");
+                }
+
+                let key = args[index + 4]
+                    .parse::<String>()
+                    .expect("Unable to read key input!");
+
+                config.set_module(RC5(mode, cipher, input, key));
+            }
             _ => {
-                // println!("Unexpected flag: '{}'", arg.as_str())
+                // panic!("Unexpected flag: '{}'", arg.as_str())
             }
         }
     }
@@ -198,6 +248,9 @@ fn parse_args(args: &Vec<String>) -> Config {
 // md5 - cargo run -- -md5 "" -> input raw
 // md5 - cargo run -- -md5 file.txt >> hash.txt -> input file
 // md5 - cargo run -- -md5 file.txt hash.txt -> compare raw and hash
+// rc5 - cargo run -- -rc5 -ecb encrypt/decrypt "test" key > file.txt
+// rc5 - cargo run -- -rc5 -cbc encrypt/decrypt plain.txt key > ciphertext.txt
+// rc5 - cargo run -- -rc5 -cbc_md5 encrypt/decrypt plain.txt key > ciphertext.txt
 
 fn main() {
     let args = args().into_iter().collect::<Vec<String>>();
@@ -228,6 +281,33 @@ fn main() {
             let hash = md5::MD5::from(input.as_str());
 
             print!("{}", hash);
+        }
+        Module::RC5(mode, cipher_mode, input, key) => {
+            // println!("{mode} {cipher_mode} {input} {key}");
+            let flag = match mode.as_str() {
+                "-ecb" => rc5::Flags::ECB,
+                "-cbc" => rc5::Flags::CBC,
+                "-cbc_md5" => rc5::Flags::CBC_MD5,
+                _ => rc5::Flags::ECB,
+            };
+
+            let rc5 = rc5::RC5::<u32>::new(12, 16, flag);
+
+            match cipher_mode.as_str() {
+                "encrypt" => {
+                    let ciphertext = rc5.encrypt(input.as_bytes(), key.as_bytes());
+
+                    print!("{}", String::from_utf8_lossy(&ciphertext[..]));
+                }
+                "decrypt" => {
+                    let plaintext = rc5.decrypt(input.as_bytes(), key.as_bytes());
+
+                    print!("{}", String::from_utf8_lossy(&plaintext[..]));
+                }
+                _ => {
+                    panic!("Cannot handle a '{}' mode", cipher_mode);
+                }
+            }
         }
     }
 }

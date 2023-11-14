@@ -6,6 +6,9 @@ use std::env::args;
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::Path;
+use std::time::Instant;
+
+use rsa::{Pkcs1v15Encrypt, RsaPrivateKey, RsaPublicKey};
 
 mod lcg;
 mod md5;
@@ -16,6 +19,7 @@ enum Module {
     LCG(u64, u64, u64, u64),
     MD5(String),
     RC5(String, String, String, String),
+    RSA(String),
 }
 
 struct Config {
@@ -234,6 +238,27 @@ fn parse_args(args: &Vec<String>) -> Config {
 
                 config.set_module(RC5(mode, cipher, input, key));
             }
+            "-rsa" => {
+                let file_path = args[index + 1]
+                    .parse::<String>()
+                    .expect("Unable to read rsa/rc5 file");
+
+                let mut contents = String::new();
+
+                let path = Path::new(file_path.as_str());
+
+                if path.exists() {
+                    let file = File::open(file_path).expect("Unable to read input file");
+
+                    let mut buf_reader = BufReader::new(file);
+
+                    buf_reader
+                        .read_to_string(&mut contents)
+                        .expect("Unable to read file content");
+                }
+
+                config.set_module(Module::RSA(contents));
+            }
             _ => {
                 // panic!("Unexpected flag: '{}'", arg.as_str())
             }
@@ -308,6 +333,58 @@ fn main() {
                     panic!("Cannot handle a '{}' mode", cipher_mode);
                 }
             }
+        }
+        Module::RSA(data) => {
+            let data = data.trim();
+
+            let now = Instant::now();
+            // 1. create rsa
+            {
+                let mut rng = rand::thread_rng();
+                let bits = 2048;
+
+                // Create a pair of keys
+                let priv_key =
+                    RsaPrivateKey::new(&mut rng, bits).expect("failed to generate a key");
+                let pub_key = RsaPublicKey::from(&priv_key);
+
+                // Encrypt RSA
+                let enc_data = pub_key
+                    .encrypt(&mut rng, Pkcs1v15Encrypt, &data.as_bytes())
+                    .expect("failed to encrypt");
+                assert_ne!(data.as_bytes(), &enc_data[..]);
+
+                // Decrypt RSA
+                let dec_data = priv_key
+                    .decrypt(Pkcs1v15Encrypt, &enc_data)
+                    .expect("failed to decrypt");
+                assert_eq!(data.as_bytes(), &dec_data[..]);
+            }
+
+            let elapsed = now.elapsed();
+            println!("RSA elapsed in: {:.2?}", elapsed);
+            // 2. create rc5
+
+            let now = Instant::now();
+
+            {
+                let mut rc5 = rc5::RC5::<u32>::new(12, 16, rc5::Flags::CBC);
+
+                let key = &[
+                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                    0x00, 0x00, 0x00,
+                ];
+
+                let enc_data = rc5.encrypt_cbc(data.as_bytes(), key);
+                let dec_data = rc5.decrypt_cbc(&enc_data[..], key);
+
+                assert_eq!(data.as_bytes(), &dec_data[..]);
+            }
+
+            let elapsed = now.elapsed();
+            println!("RC5 elapsed in: {:.2?}", elapsed);
+
+            // compare speed of encrypt and decrypt
         }
     }
 }

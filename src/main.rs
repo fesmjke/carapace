@@ -33,7 +33,7 @@ enum Module {
     MD5(String),
     RC5(String, String, String, String),
     RSA(String),
-    DSA(String, Option<String>),
+    DSA(String, String),
 }
 
 struct Config {
@@ -274,11 +274,15 @@ fn parse_args(args: &Vec<String>) -> Config {
                 config.set_module(Module::RSA(contents));
             }
             "-dsa" => {
-                let file = args[index + 1]
+                let mode = args[index + 1]
+                    .parse::<String>()
+                    .expect("Unable to read mode");
+
+                let file = args[index + 2]
                     .parse::<String>()
                     .expect("Unable to read raw/file");
 
-                let signature = args[index + 2].parse::<String>();
+                // let signature = args[index + 3].parse::<String>();
 
                 let file_path = Path::new(file.as_str());
                 let mut contents = String::new();
@@ -293,29 +297,29 @@ fn parse_args(args: &Vec<String>) -> Config {
                         .expect("Unable to read file content");
                 }
 
-                let sign = match signature {
-                    Ok(raw) => {
-                        let file_path = Path::new(file.as_str());
-                        let mut contents = String::new();
+                // let sign = match signature {
+                //     Ok(raw) => {
+                //         let file_path = Path::new(file.as_str());
+                //         let mut contents = String::new();
+                //
+                //         if file_path.exists() {
+                //             let file = File::open(file_path).expect("Unable to read input file");
+                //
+                //             let mut buf_reader = BufReader::new(file);
+                //
+                //             buf_reader
+                //                 .read_to_string(&mut contents)
+                //                 .expect("Unable to read file content");
+                //
+                //             Some(contents)
+                //         } else {
+                //             Some(raw)
+                //         }
+                //     }
+                //     Err(_) => None,
+                // };
 
-                        if file_path.exists() {
-                            let file = File::open(file_path).expect("Unable to read input file");
-
-                            let mut buf_reader = BufReader::new(file);
-
-                            buf_reader
-                                .read_to_string(&mut contents)
-                                .expect("Unable to read file content");
-
-                            Some(contents)
-                        } else {
-                            Some(raw)
-                        }
-                    }
-                    Err(_) => None,
-                };
-
-                config.set_module(Module::DSA(contents, sign));
+                config.set_module(Module::DSA(mode, contents));
             }
             _ => {
                 // panic!("Unexpected flag: '{}'", arg.as_str())
@@ -334,6 +338,10 @@ fn parse_args(args: &Vec<String>) -> Config {
 // rc5 - cargo run -- -rc5 -ecb encrypt/decrypt "test" key > file.txt
 // rc5 - cargo run -- -rc5 -cbc encrypt/decrypt plain.txt key > ciphertext.txt
 // rc5 - cargo run -- -rc5 -cbc_md5 encrypt/decrypt plain.txt key > ciphertext.txt
+// rsa - cargo run -- -rsa file.txt
+// dsa - cargo run -- -dsa "generate"
+// dsa - cargo run -- -dsa "sign" "message"
+// dsa - cargo run -- -dsa "verify" "message"
 
 fn main() {
     let args = args().into_iter().collect::<Vec<String>>();
@@ -444,38 +452,56 @@ fn main() {
 
             // compare speed of encrypt and decrypt
         }
-        Module::DSA(input, signature) => {
-            // let mut rng = rand::thread_rng();
-            // let components = Components::generate(&mut rng, KeySize::DSA_2048_256);
-            // let signing_key = SigningKey::generate(&mut rng, components);
-            // let verifying_key = signing_key.verifying_key();
+        Module::DSA(mode, message) => match mode.as_str() {
+            "generate" => {
+                let mut rng = rand::thread_rng();
+                let components = Components::generate(&mut rng, KeySize::DSA_2048_256);
+                let signing_key = SigningKey::generate(&mut rng, components);
+                let verifying_key = signing_key.verifying_key();
 
-            let signing_key = SigningKey::from_pkcs8_pem(PEM_PRIVATE_KEY)
-                .expect("Failed to decode PEM encoded key");
+                let signing_key_bytes = signing_key.to_pkcs8_pem(LineEnding::LF).unwrap();
+                let verifying_key_bytes = verifying_key.to_public_key_pem(LineEnding::LF).unwrap();
 
-            // let signature = signing_key.sign_digest_with_rng(
-            //     &mut rand::thread_rng(),
-            //     Sha1::new().chain_update(b"hello world"),
-            // );
-            //
-            // let mut file = File::create("signature.der").unwrap();
-            // file.write_all(&signature.to_bytes()).unwrap();
-            // file.flush().unwrap();
+                let mut file = File::create("public.pem").unwrap();
+                file.write_all(verifying_key_bytes.as_bytes()).unwrap();
+                file.flush().unwrap();
 
-            let verifying_key = VerifyingKey::from_public_key_pem(PEM_PUBLIC_KEY)
-                .expect("Failed to decode PEM encoded OpenSSL public key");
-
-            let signature = Signature::from_der(include_bytes!("../signature.der"))
-                .expect("Failed to decode DER signature");
-
-            let res =
-                verifying_key.verify_digest(Sha1::new().chain_update(b"hello world"), &signature);
-
-            if res.is_ok() {
-                println!("Verified!");
-            } else {
-                println!("Not verified!");
+                let mut file = File::create("private.pem").unwrap();
+                file.write_all(signing_key_bytes.as_bytes()).unwrap();
+                file.flush().unwrap();
             }
-        }
+            "sign" => {
+                let signing_key = SigningKey::from_pkcs8_pem(PEM_PRIVATE_KEY)
+                    .expect("Failed to decode PEM encoded key");
+
+                let signature = signing_key.sign_digest_with_rng(
+                    &mut rand::thread_rng(),
+                    Sha1::new().chain_update(message.as_bytes()),
+                );
+
+                let mut file = File::create("signature.der").unwrap();
+                file.write_all(&signature.to_bytes()).unwrap();
+                file.flush().unwrap();
+            }
+            "verify" => {
+                let verifying_key = VerifyingKey::from_public_key_pem(PEM_PUBLIC_KEY)
+                    .expect("Failed to decode PEM encoded OpenSSL public key");
+
+                let signature = Signature::from_der(include_bytes!("../signature.der"))
+                    .expect("Failed to decode DER signature");
+
+                let res = verifying_key
+                    .verify_digest(Sha1::new().chain_update(message.as_bytes()), &signature);
+
+                if res.is_ok() {
+                    println!("Verified!");
+                } else {
+                    println!("Not verified!");
+                }
+            }
+            _ => {
+                println!("Unexpected mode!");
+            }
+        },
     }
 }

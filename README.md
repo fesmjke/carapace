@@ -8,5 +8,5 @@ This repository is implementation of common data security algorithms.
   - [x] Pseudorandom number generator
   - [x] MD5
   - [x] RC5
-  - [ ] RSA
-  - [ ] DSS
+  - [x] RSA
+  - [x] DSS
